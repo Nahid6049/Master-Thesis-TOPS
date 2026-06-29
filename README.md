@@ -1,30 +1,21 @@
-# TOPS (**T**iny **O**pen **P**ower System **S**imulator)
+# Master-Thesis-TOPS
 
-[![Docs](https://github.com/hallvar-h/TOPS/actions/workflows/docs.yml/badge.svg)](https://github.com/hallvar-h/TOPS/actions/workflows/docs.yml)
-[![Tests](https://github.com/hallvar-h/TOPS/actions/workflows/python-app.yml/badge.svg?branch=main)](https://github.com/hallvar-h/TOPS/actions/workflows/python-app.yml)
+This repository contains the simulation code developed for my master's thesis at the Norwegian University of Science and Technology (NTNU).
 
-**Note**: This repository was previously called DynPSSimPy.
+## Thesis
 
+**Dynamic Analysis of Voltage Control and Stability in Power Systems with Varying Short-Circuit Capacity**
 
-This is a package for performing dynamic power system simulations in Python. The aim is to provide a simple and lightweight tool which is easy to install, run and modify, to be used by researchers and in education. Performance is not the main priority. The only dependencies are numpy, scipy, pandas and matplotlib (the core functionality only uses numpy and scipy).
+## About
 
-The package is being developed as part of ongoing research, and thus contains experimental features. Use at your own risk!
+The project investigates the dynamic behaviour of converter-dominated power systems under different grid-strength conditions. The simulations focus on voltage control, PLL dynamics, short-circuit ratio (SCR), and transient stability.
 
-Some features:
-- Newton-Rhapson power flow
-- Dynamic time domain simulation (RMS/phasor approximation)
-- Linearization, eigenvalue analysis/modal analysis
+The work is built on the **TOPS (Tiny Open Power System Simulator)** framework, with additional models, case studies, and analysis scripts developed as part of this thesis.
 
-# Installation
-The package can be installed using pip, as follows:
+## Repository Structure
 
-`pip install tops`
-
-# Citing
-If you use this code for your research, please cite [this paper](https://ieeexplore.ieee.org/document/9494770).
-
-# Example notebooks
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/hallvar-h/TOPS/HEAD?filepath=examples%2Fnotebooks)
-
-# Contact
-[Hallvar Haugdal](mailto:hallvhau@gmail.com)
+- examples/Base work/ – Main simulation scripts used in this thesis.
+- PLL_study/ – PLL analysis scripts.
+- PLL_VSC/ – PLL and VSC interaction studies.
+- Theoritical figure generated/ – Scripts used to generate the figures included in the thesis.
+- user_lib/ – Custom AVR, PLL, and VSC models used in this work.
