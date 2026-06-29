@@ -1,0 +1,214 @@
+import sys
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+# ==========================================================
+# PATH SETUP (CLEAN + RELATIVE)
+# ==========================================================
+
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# From PLL_study → Base work
+BASE_WORK_PATH = os.path.dirname(CURRENT_DIR)
+
+# From Base work → examples
+EXAMPLES_PATH = os.path.dirname(BASE_WORK_PATH)
+
+# Add Base work (for my_network.py)
+if BASE_WORK_PATH not in sys.path:
+    sys.path.insert(0, BASE_WORK_PATH)
+
+# Add user_models (for user_lib)
+USER_MODELS_PATH = os.path.join(EXAMPLES_PATH, "user_models")
+if USER_MODELS_PATH not in sys.path:
+    sys.path.insert(0, USER_MODELS_PATH)
+
+# ==========================================================
+
+import tops.dynamic as dps
+import tops.solvers as dps_sol
+import my_network
+import user_lib
+
+# ============================
+# SETTINGS
+# ============================
+
+PLL_BUS = "B8"
+PLL_CLASS = "PLL1"       # Change to "PLL2" if needed
+
+T_END = 20.0
+MAX_STEP = 5e-3
+F_NOM = 50.0  # Hz
+
+
+def wrap_to_pi(x):
+    return (x + np.pi) % (2*np.pi) - np.pi
+
+
+def attach_pll(model):
+    model = dict(model)
+
+    if PLL_CLASS == "PLL1":
+        model["pll"] = {
+            "PLL1": [
+                ["name", "T_filter", "bus"],
+                [f"PLL_{PLL_BUS}", 0.05, PLL_BUS],
+            ]
+        }
+    elif PLL_CLASS == "PLL2":
+        model["pll"] = {
+            "PLL2": [
+                ["name", "bus", "K_p", "K_i"],
+                [f"PLL_{PLL_BUS}", PLL_BUS, 5.0, 100.0],
+            ]
+        }
+    else:
+        raise ValueError("PLL_CLASS must be 'PLL1' or 'PLL2'")
+
+    return model
+
+
+def run_sim():
+
+    model = my_network.load()
+    model = attach_pll(model)
+
+    ps = dps.PowerSystemModel(model=model, user_mdl_lib=user_lib)
+    ps.power_flow()
+    ps.init_dyn_sim()
+
+    sol = dps_sol.ModifiedEulerDAE(
+        ps.state_derivatives,
+        ps.solve_algebraic,
+        0.0,
+        ps.x0.copy(),
+        T_END,
+        max_step=MAX_STEP,
+    )
+
+    bus_names = list(ps.buses["name"])
+    k_pll = bus_names.index(PLL_BUS)
+
+    # Find generator speed states
+    speed_idx = []
+    for i, desc in enumerate(ps.state_desc):
+        if len(desc) >= 2 and desc[1] == "speed":
+            speed_idx.append(i)
+
+    t_store = []
+    v_ang_store = []
+    pll_ang_store = []
+    pll_freq_store = []
+    speed_store = []
+
+    while sol.t < T_END:
+
+        sol.step()
+
+        x = sol.y
+        v = sol.v
+        t = sol.t
+
+        t_store.append(t)
+
+        if speed_idx:
+            speed_store.append([x[i] for i in speed_idx])
+
+        v_ang_store.append(float(np.angle(v[k_pll])))
+
+        theta_est = ps.pll[PLL_CLASS].output(x, v)
+        pll_ang_store.append(float(np.array(theta_est).flatten()[0]))
+
+        f_est = ps.pll[PLL_CLASS].freq_est(x, v)
+        pll_freq_store.append(float(np.array(f_est).flatten()[0]))
+
+    t = np.array(t_store)
+    v_ang = np.array(v_ang_store)
+    pll_ang = np.array(pll_ang_store)
+    pll_freq = np.array(pll_freq_store)
+    speed = np.array(speed_store)
+
+    return t, v_ang, pll_ang, pll_freq, speed
+
+
+# ==========================================================
+# MAIN
+# ==========================================================
+
+if __name__ == "__main__":
+
+    print("Running PLL frequency tracking study")
+    print("PLL:", PLL_CLASS)
+
+    t, v_ang, pll_ang, pll_freq, speed = run_sim()
+
+    # ============================
+    # ANGLE ANALYSIS
+    # ============================
+
+    v_ang_rel = wrap_to_pi(v_ang - v_ang[0])
+    pll_ang_rel = wrap_to_pi(pll_ang - pll_ang[0])
+    ang_err = wrap_to_pi(pll_ang - v_ang)
+
+    # ============================
+    # SYSTEM FREQUENCY
+    # ============================
+
+    omega_avg = np.mean(speed, axis=1)
+    f_sys = omega_avg * F_NOM
+    f_pll = pll_freq * F_NOM
+    freq_err = f_pll - f_sys
+
+    # ============================
+    # METRICS
+    # ============================
+
+    print("\n========== FREQUENCY METRICS ==========")
+    print("Max |f_PLL - f_sys| (Hz):", np.max(np.abs(freq_err)))
+    print("RMS freq error (Hz):", np.sqrt(np.mean(freq_err**2)))
+    print("Final freq error (Hz):", freq_err[-1])
+
+    print("\n========== ANGLE METRICS ==========")
+    print("Max |angle error| (rad):", np.max(np.abs(ang_err)))
+    print("RMS angle error (rad):", np.sqrt(np.mean(ang_err**2)))
+    print("Final angle error (rad):", ang_err[-1])
+
+    # ============================
+    # PLOTS
+    # ============================
+
+    plt.figure()
+    plt.plot(t, v_ang_rel, label="Voltage angle (relative)")
+    plt.plot(t, pll_ang_rel, "--", label="PLL angle (relative)")
+    plt.title("PLL Angle Tracking")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Angle (rad)")
+    plt.grid(True)
+    plt.legend()
+
+    plt.figure()
+    plt.plot(t, ang_err)
+    plt.title("Angle Tracking Error")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Error (rad)")
+    plt.grid(True)
+
+    plt.figure()
+    plt.plot(t, f_sys, label="System frequency (Hz)")
+    plt.plot(t, f_pll, "--", label="PLL frequency (Hz)")
+    plt.title("Frequency Tracking")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Frequency (Hz)")
+    plt.grid(True)
+    plt.legend()
+
+    plt.figure()
+    plt.plot(t, freq_err)
+    plt.title("Frequency Tracking Error")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Error (Hz)")
+    plt.grid(True)
+
+    plt.show()
